@@ -19,7 +19,6 @@ namespace HighestNumberGame
         internal string UserName { set; get; }
 
         internal bool connected = false;
-
         internal int num = 1;
 
         public Client(Socket socket)
