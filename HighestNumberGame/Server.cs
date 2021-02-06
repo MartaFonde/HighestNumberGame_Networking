@@ -16,7 +16,6 @@ namespace HighestNumberGame
         static readonly internal object l = new object();   //en cada acceso a clients --> recurso común
 
         private static int port = 31416;
-        private static int gamers = 4;
 
         private static List<Client> clients;
 
@@ -28,7 +27,6 @@ namespace HighestNumberGame
         private static System.Timers.Timer timer;
 
         private static bool end = false;
-        private static bool start = false;
 
         internal static bool SendMessageFromClientToAllClients(Client c, string msg)     //envía desde un client al resto de clients
         {            
@@ -153,27 +151,7 @@ namespace HighestNumberGame
                 numbers.Remove(c.num);
                 clients.Remove(c);                
             }
-        }
-        
-        private static void OnTimedEvent(object sender, ElapsedEventArgs e)
-        {
-            if (!end)
-            {
-                TimeSpan dif = endTime - DateTime.Now;
-
-                string time = string.Format($"{dif:mm\\:ss}");
-                SendMessageToAllClients(time);
-
-                if (dif.Seconds == 0)
-                {
-                    Console.WriteLine("--- END ---");
-                    SendMessageToAllClients("--- END ---");
-                    timer.Stop();
-                    end = true;
-                    CheckNumbersWinner();
-                }                
-            }            
-        }
+        }                
 
         static  void CheckNumbersWinner()
         {
@@ -201,7 +179,7 @@ namespace HighestNumberGame
                     }
                     else if (ieReceptor.Port == winner.Port)
                     {
-                        SendMessageToClient(winner, "Congratulations! You are the winner);
+                        SendMessageToClient(winner, "Congratulations! You are the winner");
                     }
                 }
                 EndGame();
@@ -223,33 +201,30 @@ namespace HighestNumberGame
         }
 
         private static void StartMark()
+        {                
+            SendMessageToAllClients("--- START ---");
+            endTime = DateTime.Now.AddSeconds(seg);
+            timer = new System.Timers.Timer(1000);
+            timer.Elapsed += OnTimedEvent;
+            timer.Start();                                           
+        }
+
+        private static void OnTimedEvent(object sender, ElapsedEventArgs e)
         {
-            while (!start)
+            if (!end)
             {
-                bool allConnected = true;
+                TimeSpan dif = endTime - DateTime.Now;
 
-                lock (l)
+                string time = string.Format($"{dif:mm\\:ss}");
+                SendMessageToAllClients(time);
+
+                if (dif.Seconds == 0)
                 {
-                    for (int i = 0; i < clients.Count; i++)
-                    {
-                        if (!clients[i].connected)
-                        {
-                            allConnected = false;
-                            break;
-                        }
-                    }
-                }                
-
-                if (allConnected)
-                {
-                    start = true;
-                    SendMessageToAllClients("--- START ---");
-
-                    endTime = DateTime.Now.AddSeconds(seg);
-                    timer = new System.Timers.Timer(1000);
-                    timer.Elapsed += OnTimedEvent;
-                    timer.Start();
-                }                
+                    SendMessageToAllClients("--- END ---");
+                    timer.Stop();
+                    end = true;
+                    CheckNumbersWinner();
+                }
             }
         }
 
@@ -266,7 +241,7 @@ namespace HighestNumberGame
                     try
                     {
                         server.Bind(ie);
-                        server.Listen(gamers);
+                        server.Listen(6);
                         portFree = true;
 
                         Console.WriteLine("Server waiting at port {0}", ie.Port);
@@ -278,17 +253,14 @@ namespace HighestNumberGame
                             Socket sClient = server.Accept();
                             lock (l)
                             {
-                                if(clients.Count <= gamers)
-                                {
-                                    clients.Add(new Client(sClient));  //lanzamos hilo/cliente
-                                    Console.WriteLine("Connected clients: "+clients.Count);
+                                clients.Add(new Client(sClient));  //lanzamos hilo/cliente
+                                //Console.WriteLine("Connected clients: "+clients.Count);
 
-                                    if (clients.Count == gamers)
-                                    {
-                                        Thread starting = new Thread(StartMark);
-                                        starting.Start();
-                                    }
-                                }                                                                                              
+                                if (clients.Count == 2)
+                                {
+                                    Thread starting = new Thread(StartMark);
+                                    starting.Start();
+                                }                                                                                                                             
                             }
                         }
                     }
