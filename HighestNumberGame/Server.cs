@@ -23,110 +23,73 @@ namespace HighestNumberGame
         private static Random n = new Random();
 
         private static DateTime endTime;
-        private static int seg = 60;
-        private static System.Timers.Timer timer;
+        const int TIMEPLAY = 15;
+        private static int seg = TIMEPLAY;
 
         private static bool end = false;
 
-        internal static bool SendMessageFromClientToAllClients(Client c, string msg)     //envía desde un client al resto de clients
-        {            
+
+        private static void SendMessageToAllClients(string msg)     //envía a todos los clients desde server
+        {
             if (msg != null)
             {
-                Console.WriteLine("From: "+c.UserName+" - Message: "+msg);
                 lock (l)
                 {
                     for (int i = 0; i < clients.Count; i++)
                     {
-                        IPEndPoint ieReceptor = (IPEndPoint)clients[i].S.RemoteEndPoint;
-                        if (ieReceptor.Port != c.Port && clients[i].connected)
+                        try
                         {
-                            try
+                            using (NetworkStream ns = new NetworkStream(clients.ElementAt(i).S))
+                            using (StreamReader sr = new StreamReader(ns))
+                            using (StreamWriter sw = new StreamWriter(ns))
                             {
-                                using (NetworkStream ns = new NetworkStream(clients.ElementAt(i).S))
-                                using (StreamReader sr = new StreamReader(ns))
-                                using (StreamWriter sw = new StreamWriter(ns))
-                                {
-                                    sw.WriteLine(msg);
-                                    sw.Flush();
-                                }
-                            }
-                            catch (IOException)
-                            {
-                                Console.WriteLine("Error sending the message from client "+c.UserName+" to all clients: " + msg);
+                                sw.WriteLine(msg);
+                                sw.Flush();
                             }
                         }
-                    }
-                    return true;
-                }                                                                   
+                        catch (IOException)
+                        {
+                            DisconnectClient(clients[i]);
+                            Console.WriteLine("Error sending the message to all clients: " + msg);
+                        }                                                                
+                    }              
+                }
             }
-            return false;
         }
 
-        private static bool SendMessageToAllClients(string msg)     //envía a todos los clients desde server
+        private static void SendMessageToClient(Client c, string msg)     //envía a un cliente desde server
         {
-            if (msg != null) 
+            if (msg != null )
             {
-                Console.WriteLine("From server to all clients: "+msg);
                 lock (l)
                 {
-                    for (int i = 0; i < clients.Count; i++)
+                    try
                     {
-                        if (clients[i].connected)
+                        using (NetworkStream ns = new NetworkStream(c.S))
+                        using (StreamReader sr = new StreamReader(ns))
+                        using (StreamWriter sw = new StreamWriter(ns))
                         {
-                            try
-                            {
-                                using (NetworkStream ns = new NetworkStream(clients.ElementAt(i).S))
-                                using (StreamReader sr = new StreamReader(ns))
-                                using (StreamWriter sw = new StreamWriter(ns))
-                                {
-                                    sw.WriteLine(msg);
-                                    sw.Flush();
-                                }
-                            }
-                            catch (IOException)
-                            {
-                                Console.WriteLine("Error sending the message to all clients: "+msg);
-                            }
+                            sw.WriteLine(msg);
+                            sw.Flush();
                         }
                     }
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static bool SendMessageToClient(Client c, string msg)     //envía a un cliente desde server
-        {
-            if (msg != null && c.connected)
-            {
-                Console.WriteLine("From server to client: "+c.UserName+"- Msg: "+msg);
-                try
-                {
-                    using (NetworkStream ns = new NetworkStream(c.S))
-                    using (StreamReader sr = new StreamReader(ns))
-                    using (StreamWriter sw = new StreamWriter(ns))
+                    catch (IOException)
                     {
-                        sw.WriteLine(msg);
-                        sw.Flush();
-                        return true;
+                        Console.WriteLine("Error sending the message to client");
+                        DisconnectClient(c);
                     }
-                }
-                catch (IOException)
-                {
-                    Console.WriteLine("Error sending the message to client "+c.UserName+" : " + msg);
-                }
-            }                                                
-            return false;
+                }                
+            }
         }
 
         internal static int RandomNumber(Client c)
         {
             bool repeat = true;
             bool numAsig = false;
-            int num = -1;
+            int num = 1;
             while (repeat)
             {
-                num = n.Next(1, 5);
+                num = n.Next(1, 21);
                 lock (l)
                 {
                     if (!numbers.Contains(num))
@@ -135,95 +98,106 @@ namespace HighestNumberGame
                         numbers.Add(num);
                         numAsig = true;
                     }
-                }  
-            }
-            if (numAsig)
-            {
-                SendMessageToClient(c, "Your number is: " + num);
-            }
-            return num;                     
+                    if (numAsig)
+                    {
+                        SendMessageToClient(c, "Your number is: " + num);
+                    }
+                }
+            }            
+            return num;
         }
 
         internal static void DisconnectClient(Client c)
         {
             lock (l)
             {
+                c.S.Close();
                 numbers.Remove(c.num);
-                clients.Remove(c);                
+                clients.Remove(c);
             }
-        }                
+        }
 
-        static  void CheckNumbersWinner()
+        static void CheckNumbersWinner()
         {
             int number = 1;
-            Client winner = clients[0];
-
-            lock (l)
+            
+            //lock (l)  xa está detro dun lock
+            if(clients.Count > 0)
             {
+                Client winner = clients[0];
+
                 for (int i = 0; i < clients.Count; i++)
                 {
                     SendMessageToClient(clients[i], "Your number is: " + clients[i].num);
-                    if(clients[i].num >= number)
+                    if (clients[i].num >= number)
                     {
                         winner = clients[i];
-                        number = clients[i].num;
+                        number = clients[i].num;                    
                     }
                 }
 
                 for (int i = 0; i < clients.Count; i++)
                 {
                     IPEndPoint ieReceptor = (IPEndPoint)clients[i].S.RemoteEndPoint;
-                    if (ieReceptor.Port != winner.Port && clients[i].connected)
+                    if (ieReceptor.Port != winner.Port)
                     {
-                        SendMessageToClient(clients[i], "The winner is " + winner.UserName + " --- Number: " + winner.num);
-                    }
-                    else if (ieReceptor.Port == winner.Port)
-                    {
-                        SendMessageToClient(winner, "Congratulations! You are the winner");
-                    }
+                        SendMessageToClient(clients[i], "The winner is number: " + winner.num);
+                    }                    
                 }
-                EndGame();
+                SendMessageToClient(winner, "Congratulations! You are the winner");
             }
         }
 
         private static void EndGame()
         {
-            lock (l)
+            //lock (l) xa se chama dentro dun lock
+            if(clients.Count > 0)
             {
                 for (int i = 0; i < clients.Count; i++)
                 {
                     clients[i].S.Close();
-                    clients[i].connected = false;
                 }
+
+                //reinicio para nueva partida
                 clients.Clear();
                 numbers.Clear();
-            }            
+
+                seg = TIMEPLAY;
+                //end = false;
+            }
         }
 
         private static void StartMark()
-        {                
-            SendMessageToAllClients("--- START ---");
-            endTime = DateTime.Now.AddSeconds(seg);
-            timer = new System.Timers.Timer(1000);
-            timer.Elapsed += OnTimedEvent;
-            timer.Start();                                           
-        }
-
-        private static void OnTimedEvent(object sender, ElapsedEventArgs e)
         {
-            if (!end)
+            SendMessageToAllClients("--- START ---");
+            endTime = DateTime.Now.AddSeconds(seg + 1);
+
+            while (!end)
             {
-                TimeSpan dif = endTime - DateTime.Now;
-
-                string time = string.Format($"{dif:mm\\:ss}");
-                SendMessageToAllClients(time);
-
-                if (dif.Seconds == 0)
+                lock (l)
                 {
-                    SendMessageToAllClients("--- END ---");
-                    timer.Stop();
-                    end = true;
-                    CheckNumbersWinner();
+                    if (!end)
+                    {                        
+                        DateTime now = DateTime.Now;
+                        TimeSpan dif = endTime - now;
+
+                        if (dif.Milliseconds % 1000 == 0 && dif.Seconds == seg)
+                        {
+                            string time = string.Format($"{dif:mm\\:ss}");
+                            SendMessageToAllClients(time);
+                            seg--;
+                        }
+
+                        if (dif.Seconds == 0)
+                        {
+                            string time = string.Format($"{dif:mm\\:ss}");
+                            SendMessageToAllClients(time);
+
+                            SendMessageToAllClients("--- END ---");
+                            CheckNumbersWinner();
+                            EndGame();
+                        }                        
+                    }
                 }
             }
         }
@@ -251,15 +225,15 @@ namespace HighestNumberGame
                         while (true)
                         {
                             Socket sClient = server.Accept();
+
                             lock (l)
                             {
                                 clients.Add(new Client(sClient));  //lanzamos hilo/cliente
-                                //Console.WriteLine("Connected clients: "+clients.Count);
 
                                 if (clients.Count == 2)
                                 {
-                                    Thread starting = new Thread(StartMark);
-                                    starting.Start();
+                                    Thread t = new Thread(StartMark);
+                                    t.Start();                                    
                                 }                                                                                                                             
                             }
                         }
